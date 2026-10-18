@@ -1,0 +1,44 @@
+# llm-compare 工作台配置。复制为仓库根目录的 config.yaml 后修改。
+# 所有字段都必须填写，缺失或类型错误时服务启动直接报错，不使用隐式默认值。
+# 日志级别不在此文件中，使用环境变量 LOG_LEVEL（debug / info / warn / error，未设置时为 info）。
+
+server:
+  # 必填。监听地址，只能是回环地址：127.0.0.1 或 ::1。
+  host: 127.0.0.1
+  # 必填。HTTP 端口，1-65535。前端开发服务器也读取这个值作为接口代理目标。
+  port: 4310
+
+# 必填。绝对路径。SQLite 数据库所在目录，不存在时自动创建。
+data_dir: /home/you/.local/share/llm-compare
+
+# 必填。绝对路径。每次尝试的独立 cwd 与分析快照目录都放在这里。
+# 必须位于用户主目录之外、不在 git 仓库内，且它和它的每一级父目录都不能有 AGENTS.md / CLAUDE.md，
+# 否则服务启动时报错。推荐放在 /tmp 下的应用专属目录。
+work_root: /tmp/llm-compare-work
+
+# 必填。绝对路径。bubblewrap 可执行文件，所有 Agent 都经它启动。
+bwrap_path: /usr/bin/bwrap
+
+# 必填。前端构建产物目录（apps/web/dist 的绝对路径）；为 null 时后端只提供接口，前端用开发服务器。
+# 发行版可执行文件填 embedded，使用打包在程序内的前端；源码运行不支持 embedded。
+web_dist_dir: null
+
+scheduler:
+  # 必填。正整数。同时运行的 Agent 进程上限（对比尝试与分析消息共用）。超出的尝试排队。
+  max_parallel_processes: 4
+
+timeouts:
+  # 必填。正整数，毫秒。从启动适配器进程到完成模型、思考强度、只读模式设置的上限。
+  startup_ms: 90000
+  # 必填。正整数，毫秒。发送提示词到收到最终结果的上限，超时后取消并终止进程，尝试记为失败。
+  attempt_ms: 1800000
+  # 必填。正整数，毫秒。发送 session/cancel 后等待 Agent 确认的上限，超时后终止进程。
+  cancel_confirm_ms: 10000
+  # 必填。正整数，毫秒。Agent 设置页的检测、读取思考强度选项与输出纯净性检查的上限。
+  probe_ms: 120000
+
+limits:
+  max_attachment_bytes: 10485760
+  max_attachments_total_bytes: 20971520
+  # 必填。正整数。单次尝试输出正文的最大字符数（Unicode 码点），超出后停止该尝试并记为失败。
+  max_output_chars: 2000000

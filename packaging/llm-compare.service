@@ -1,0 +1,21 @@
+[Unit]
+Description=LLM comparison workbench
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/llm-compare serve --config %h/.config/llm-compare/config.yaml
+Environment=HOME=%h
+Environment=USER=%u
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+WorkingDirectory=/
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+KillMode=control-group
+UMask=0077
+
+[Install]
+WantedBy=default.target

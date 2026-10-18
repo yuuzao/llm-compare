@@ -1,0 +1,93 @@
+import { mkdtempSync, readFileSync, rmSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { afterAll, describe, expect, it } from "vitest";
+import { loadConfig } from "../src/config.ts";
+import { buildSandboxHost, type AppContext } from "../src/context.ts";
+import { Db } from "../src/db/index.ts";
+import { SCHEMA_SQL, PROVIDER_ATTACHMENT_SQL } from "../src/db/schema.ts";
+import { EventStore } from "../src/services/events.ts";
+import { Scheduler } from "../src/services/scheduler.ts";
+import { WorkDirs } from "../src/services/workdir.ts";
+import { ProjectService } from "../src/services/projects.ts";
+import { AttachmentService } from "../src/services/attachments.ts";
+import { LibraryService } from "../src/services/library.ts";
+
+const root = mkdtempSync(join(tmpdir(), "llm-compare-library-"));
+const config = { ...loadConfig(resolve("../../config.example.yaml")), data_dir: root, work_root: join(root, "work") };
+const db = new Db(":memory:");
+const ctx: AppContext = { config, db, events: new EventStore(db), workdirs: new WorkDirs(config.work_root), sandboxHost: buildSandboxHost(config), scheduler: new Scheduler(1), stderrDir: root };
+const library = new LibraryService(ctx);
+const projects = new ProjectService(ctx);
+const attachments = new AttachmentService(ctx);
+const ref = (v: { id: string; version: number }) => ({ id: v.id, version: v.version });
+afterAll(() => { db.raw.close(); rmSync(root, { recursive: true, force: true }); });
+
+describe("内容库持久化与复制", () => {
+  it("创建带真实附件的素材和提示词，原子创建项目并独立保留副本", async () => {
+    const bytes = readFileSync(resolve("../../README.md"));
+    const material = await library.save({ kind: "material", title: "复用素材", content: "校验词：😀<&>\n换行" }, [new File([bytes], "README.md")]);
+    const prompt = await library.save({ kind: "prompt", title: "复用提示词", content: "只返回校验词" }, []);
+    const p = projects.create({ title: "从库创建", material_ref: ref(material), prompt_ref: ref(prompt) });
+    expect(p.draft_material).toBe(material.content);
+    expect(p.draft_prompt).toBe(prompt.content);
+    expect(p.draft_sources?.material).toMatchObject({ id: material.id, version: 1 });
+    expect(p.draft_attachments[0]!.id).not.toBe(material.attachments[0]!.id);
+    expect(attachments.data(p.draft_attachments[0]!)).toEqual(bytes);
+    const next = await library.save({ kind: material.kind, title: material.title, content: "修改后的内容", attachment_ids: [], expected_version: 1 }, [], material.id);
+    expect(next.version).toBe(2);
+    library.remove(material.id); library.remove(prompt.id);
+    expect(projects.get(p.id)).toEqual(p);
+    expect(attachments.data(p.draft_attachments[0]!)).toEqual(bytes);
+    expect(() => projects.create({ title: "已删除", material_ref: ref(next) })).toThrow("已删除");
+    library.restore(material.id);
+    expect(library.get(material.id).deleted).toBe(false);
+    await expect(library.save({ kind: material.kind, title: material.title, content: "并发旧版本", expected_version: 1 }, [], material.id)).rejects.toThrow("已修改");
+  });
+  it("保存未自动持久化的输入和项目附件，再载入其他项目，严格校验归属", async () => {
+    const p = projects.create({ title: "来源项目" });
+    const target = projects.create({ title: "目标项目" });
+    const file = await attachments.upload(p.id, new File([readFileSync(resolve("../../README.md"))], "来源.md"));
+    const item = await library.save({ kind: "material", title: "输入框即时副本", content: "尚未自动保存", source_project_id: p.id, source_attachment_ids: [file.id] }, []);
+    const applied = library.apply(target.id, ref(item));
+    expect(applied.content).toBe("尚未自动保存");
+    expect(applied.attachments[0]!.project_id).toBe(target.id);
+    expect(applied.attachments[0]!.sha256).toBe(file.sha256);
+    expect(() => attachments.list(p.id, applied.attachments.map((f) => f.id))).toThrow("不属于");
+    await expect(library.save({ kind: "material", title: "不合法", content: "", source_project_id: target.id, source_attachment_ids: [file.id] }, [])).rejects.toThrow("不属于");
+    await expect(library.save({ kind: "material", title: "跨库附件", content: "", attachment_ids: item.attachments.map((f) => f.id) }, [])).rejects.toThrow("不能引用");
+    await expect(library.save({ kind: "prompt", title: "带附件提示词", content: "正文", source_project_id: p.id, source_attachment_ids: [file.id] }, [])).rejects.toThrow("不支持附件");
+  });
+  it("空条目与坏文件拒绝保存；过期选择或类型错误不留下半成品项目或文件", async () => {
+    await expect(library.save({ kind: "material", title: "空素材", content: " " }, [])).rejects.toThrow("至少需要");
+    await expect(library.save({ kind: "prompt", title: "空提示词", content: "" }, [])).rejects.toThrow("不能为空");
+    await expect(library.save({ kind: "material", title: "坏文件", content: "" }, [new File(["不是图片"], "bad.png")])).rejects.toThrow("仅支持");
+    const item = await library.save({ kind: "material", title: "回滚素材", content: "" }, [new File([readFileSync(resolve("../../README.md"))], "README.md")]);
+    const before = db.get<{ n: number }>("SELECT count(*) n FROM projects")!.n;
+    const paths = readdirSync(join(root, "attachments")).sort();
+    expect(() => projects.create({ title: "失败项目", material_ref: ref(item), prompt_ref: ref(item) })).toThrow("类型不匹配");
+    expect(db.get<{ n: number }>("SELECT count(*) n FROM projects")!.n).toBe(before);
+    expect(readdirSync(join(root, "attachments")).sort()).toEqual(paths);
+    expect(() => library.apply(projects.create({ title: "目标" }).id, { id: item.id, version: 100 })).toThrow("已修改");
+  });
+  it("搜索按字面匹配特殊字符并支持稳定分页", async () => {
+    const first = await library.save({ kind: "prompt", title: "百分号 % 独立搜索", content: "正文" }, []);
+    await library.save({ kind: "prompt", title: "普通名称", content: "正文" }, []);
+    const result = library.list({ kind: "prompt", query: "%", limit: 30 });
+    expect(result.items.map((x) => x.id)).toEqual([first.id]);
+    const page = library.list({ kind: "prompt", query: "", limit: 1 });
+    expect(page.next_cursor).not.toBeNull();
+    const next = library.list({ kind: "prompt", query: "", limit: 1, cursor: page.next_cursor! });
+    expect(next.items[0]!.id).not.toBe(page.items[0]!.id);
+  });
+  it("版本 3 迁移保留项目、创建备份并添加来源与库结构", () => {
+    const path = join(root, "v3.sqlite");
+    const old = new DatabaseSync(path); old.exec(SCHEMA_SQL + PROVIDER_ATTACHMENT_SQL); old.exec("PRAGMA user_version = 3");
+    old.prepare("INSERT INTO projects (id,title,draft_material,draft_prompt,draft_version,next_run_number,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)").run("old-project", "原项目", "原素材", "原提示词", 7, 1, "old", "old"); old.close();
+    const migrated = new Db(path);
+    expect(migrated.get<{ user_version: number }>("PRAGMA user_version")!.user_version).toBe(4);
+    expect(migrated.get("SELECT draft_material,draft_version,draft_sources FROM projects WHERE id='old-project'")).toMatchObject({ draft_material: "原素材", draft_version: 7, draft_sources: "{}" });
+    expect(migrated.all("PRAGMA foreign_key_check")).toHaveLength(0); migrated.raw.close();
+  });
+});

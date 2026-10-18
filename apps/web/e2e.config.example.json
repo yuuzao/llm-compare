@@ -1,0 +1,35 @@
+{
+  "baseURL": "https://llm-compare.localhost",
+  "browserChannel": "chrome",
+  "timeoutMs": 180000,
+  "run": {
+    "agentName": "Codex 干净",
+    "modelValue": "gpt-6.1-sol",
+    "thoughtLevelName": "Low",
+    "alternateThoughtLevelName": "Medium"
+  },
+  "analysis": {
+    "agentName": "DeepSeek Harness 干净",
+    "modelValue": "[\"deepseek-official\",\"deepseek-v4-flash\"]",
+    "thoughtLevelName": "Low"
+  },
+  "comparison": {
+    "targets": [
+      {
+        "agentName": "Pi 干净",
+        "modelValue": "example/gemini-flash",
+        "thoughtLevelName": "Thinking: high"
+      },
+      {
+        "agentName": "Cursor Agent",
+        "modelValue": "grok-4.7",
+        "thoughtLevelName": "High"
+      }
+    ],
+    "requireClean": false
+  },
+  "providerNames": [
+    "示例 Chat Completions",
+    "示例 Responses"
+  ]
+}

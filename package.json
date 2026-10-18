@@ -1,0 +1,26 @@
+{
+  "name": "llm-compare",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.28.5",
+  "scripts": {
+    "dev:server": "pnpm --filter @llm-compare/server dev",
+    "dev:web": "pnpm --filter @llm-compare/web dev",
+    "build": "pnpm --filter @llm-compare/web build",
+    "start": "pnpm --filter @llm-compare/server start",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "release": "pnpm lint && pnpm test && pnpm build && node scripts/build-release.mjs && node scripts/verify-release.mjs",
+    "release:build": "pnpm build && node scripts/build-release.mjs",
+    "release:verify": "node scripts/verify-release.mjs",
+    "release:publish": "node scripts/publish-release.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.4",
+    "typescript": "^7.0.2",
+    "yaml": "^2.9.1"
+  },
+  "version": "0.1.0",
+  "license": "MIT"
+}

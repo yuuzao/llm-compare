@@ -1,0 +1,27 @@
+{
+  "name": "@llm-compare/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/cli.ts ../../config.yaml",
+    "start": "node src/cli.ts ../../config.yaml",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@agentclientprotocol/sdk": "1.8.0",
+    "@hono/node-server": "^2.1.5",
+    "@llm-compare/shared": "workspace:*",
+    "hono": "^4.13.13",
+    "openai": "^7.34.0",
+    "pino": "^10.4.0",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
