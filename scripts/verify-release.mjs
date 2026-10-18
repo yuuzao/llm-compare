@@ -32,7 +32,7 @@ try {
   const untar = spawnSync('tar', ['-xzf', tarball, '-C', pkg], { encoding: 'utf8', timeout: 60000 });
   check(untar.status === 0, '解压发布包');
   const files = readdirSync(pkg).sort();
-  for (const name of ['llm-compare', 'install.sh', 'llm-compare.service', 'config.example.yaml', 'build-info.json', 'licenses']) {
+  for (const name of ['llm-compare', 'LICENSE', 'install.sh', 'llm-compare.service', 'config.example.yaml', 'build-info.json', 'licenses']) {
     check(files.includes(name), `发布包包含 ${name}`);
   }
   check(!files.some((name) => /^(config\.yaml|data|.*\.sqlite.*|.*credentials.*|\.env.*)$/i.test(name)), '发布包不含本机配置、数据或凭据');

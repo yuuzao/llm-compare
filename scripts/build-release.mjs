@@ -59,7 +59,7 @@ const relativeAssets = Object.fromEntries(Object.entries(assets).map(([key, path
 writeFileSync(sea, JSON.stringify({ main: 'server.cjs', mainFormat: 'commonjs', output: relative(out, binary), assets: relativeAssets, disableExperimentalSEAWarning: true, useSnapshot: false, useCodeCache: false, execArgvExtension: 'none' }, null, 2));
 execFileSync(node, ['--build-sea', 'sea.json'], { cwd: out, stdio: 'inherit', timeout: 120000 });
 chmodSync(binary, 0o755);
-for (const file of ['config.example.yaml', 'packaging/llm-compare.service', 'packaging/install.sh', 'docs/安装与发布.md']) cpSync(file, join(stage, file.split('/').at(-1)));
+for (const file of ['LICENSE', 'config.example.yaml', 'packaging/llm-compare.service', 'packaging/install.sh', 'docs/安装与发布.md']) cpSync(file, join(stage, file.split('/').at(-1)));
 writeFileSync(join(stage, 'build-info.json'), JSON.stringify({ version, commit, node: nodeVersion, platform: 'linux-x64', schema: 4 }, null, 2) + '\n');
 // Include licenses for all packages that actually contribute to the server bundle,
 // plus the embedded front-end dependencies and the bundled Node runtime.

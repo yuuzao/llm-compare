@@ -18,6 +18,15 @@ const help = `llm-compare ${buildInfo.version}
   llm-compare --version
 源码运行兼容：node src/cli.ts <配置路径>`;
 
+// Bare names resolve through PATH, matching how the sandbox launches them.
+function resolveExecutable(command: string): string | null {
+  const candidates = command.includes("/") ? [command] : (process.env.PATH ?? "").split(":").filter(Boolean).map((dir) => join(dir, command));
+  for (const candidate of candidates) {
+    try { accessSync(candidate, constants.X_OK); return candidate; } catch { /* try next PATH entry */ }
+  }
+  return null;
+}
+
 function run(args: string[]): void {
   if (args.length === 1 && ["--version", "-v"].includes(args[0]!)) {
     console.log(JSON.stringify({ ...buildInfo, node: process.version })); return;
@@ -63,9 +72,10 @@ function run(args: string[]): void {
       const rows = db.prepare("SELECT name, config_json FROM agent_configs WHERE deleted_at IS NULL").all();
       for (const row of rows) {
         const agent = JSON.parse(String(row.config_json)) as { command: string; mounts: Array<{ host_path: string }> };
-        accessSync(agent.command, constants.X_OK);
+        const command = resolveExecutable(agent.command);
+        if (!command) throw new Error(`Agent「${row.name}」的程序不可执行：${agent.command}（PATH=${process.env.PATH ?? ""}）`);
         for (const mount of agent.mounts) accessSync(mount.host_path, constants.R_OK);
-        console.log(`Agent 程序可执行：${row.name}`);
+        console.log(`Agent 程序可执行：${row.name} → ${command}`);
       }
     } finally { db.close(); }
   }
